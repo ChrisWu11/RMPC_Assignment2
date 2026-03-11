@@ -10,6 +10,16 @@ from trajectory_generator.traj_generation import TrajGenerator
 import matplotlib.pyplot as plt
 from path_planner.utils import *
 
+
+def scale_points(path_points, scaler):
+    if not path_points:
+        return [], []
+
+    rows = [point[0] / scaler for point in path_points]
+    cols = [point[1] / scaler for point in path_points]
+    return rows, cols
+
+
 def main(args=None):
     # Initialize the graph and trajectory generator
     graph = LatticeGraph()
@@ -24,10 +34,10 @@ def main(args=None):
     graph.initialise_graph(n_rows=n_rows, n_cols=n_cols, lattice_cell_size=lattice_cell_size)
 
     # Define the start and goal positions with orientation
-    s_3d = (1, 8, 90)  # Start position: row, col, angle
-    g_3d = (8, 2, 270)  # Goal position: row, col, angle
-    s_2d = (1, 8, 90)  # Start position: row, col
-    g_2d = (8, 2, 270)  # Goal position: row, col
+    s_3d = (1, 8, 90)  # Start position in lattice coordinates: row, col, angle
+    g_3d = (8, 2, 270)  # Goal position in lattice coordinates: row, col, angle
+    s_2d = (s_3d[0] * lattice_cell_size, s_3d[1] * lattice_cell_size)  # Start position in map coordinates
+    g_2d = (g_3d[0] * lattice_cell_size, g_3d[1] * lattice_cell_size)  # Goal position in map coordinates
 
     # Initialize obstacle grids
     obs = ObstaclesGrid(map_size=(n_rows * lattice_cell_size, n_cols * lattice_cell_size))
@@ -72,22 +82,40 @@ def main(args=None):
         # Print the number of states in the trajectory
         print("trajectory length = ", len(result.states))
 
-        # Visualization section
-        # Plot the trajectory
-        x = []
-        y = []
-        for i in range(len(result.states)):
-            x.append(result.states[i].x)  
-            y.append(result.states[i].y) 
-        # Plot the time-velocity curve 
-        v = []
-        for i in range(len(result.states)):
-            v.append(result.states[i].v)
-        plt.plot(v)
-        plt.plot(y, x, color='green', linewidth=2.0)  
+        traj_x = [state.x for state in result.states]
+        traj_y = [state.y for state in result.states]
+        traj_v = [state.v for state in result.states]
+        traj_t = [i * traj_generator.time_step for i in range(len(result.states))]
+
+        plt.figure("Velocity-Time")
+        plt.plot(traj_t, traj_v, color='tab:blue', linewidth=2.0, label='Lattice velocity')
+        plt.xlabel("Time [s]")
+        plt.ylabel("Velocity")
+        plt.title("Velocity-Time Curve")
+        plt.grid(True)
+        plt.legend()
 
     # Plot the obstacle map and trajectory
-    fig = plot_map(obs_plot, graph, lattice_cell_size)
+    ax = plot_map(obs_plot, graph, lattice_cell_size)
+
+    if path:
+        ax.plot(traj_y, traj_x, color='green', linewidth=2.0, label='Lattice path')
+
+    if path_rrt:
+        rrt_rows, rrt_cols = scale_points(path_rrt, scaler)
+        ax.plot(rrt_cols, rrt_rows, color='tab:red', linewidth=2.0, linestyle='--', label='RRT path')
+
+    if path_prm:
+        prm_rows, prm_cols = scale_points(path_prm, scaler)
+        ax.plot(prm_cols, prm_rows, color='tab:orange', linewidth=2.0, linestyle='-.', label='PRM path')
+
+    ax.scatter(s_2d[1] / scaler, s_2d[0] / scaler, color='tab:blue', s=80, marker='o', label='Start')
+    ax.scatter(g_2d[1] / scaler, g_2d[0] / scaler, color='black', s=80, marker='x', label='Goal')
+    ax.set_title("Path Planning Results")
+    ax.set_xlabel("Column")
+    ax.set_ylabel("Row")
+    ax.legend()
+
     plt.show()
 
 if __name__ == '__main__':

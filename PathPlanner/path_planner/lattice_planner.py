@@ -204,10 +204,37 @@ class Astar:
         distances = dict()
         costs = dict()
         open_set.put((0, s))
-        # TODO: Implement A* algorithm logic
-        # YOUR CODE STARTS HERE
-        pass   
-        # YOUR CODE ENDS HERE
+        distances[s] = 0.0
+        costs[s] = self.calH(s, g)
+
+        while not open_set.empty():
+            _, current = open_set.get()
+
+            if current in closed_set:
+                continue
+
+            if current == g:
+                return self.traverse_path(s, g, parent_node)
+
+            closed_set.add(current)
+
+            for neighbor in self.get_neighbor(current, graph_vert_list, adjacency_matrix):
+                if neighbor in closed_set:
+                    continue
+
+                expand_cost = self.cal_expand_cost(current, neighbor, edge_dict)
+                if not np.isfinite(expand_cost):
+                    continue
+
+                tentative_distance = distances[current] + expand_cost
+                if tentative_distance < distances.get(neighbor, np.inf):
+                    parent_node[neighbor] = current
+                    distances[neighbor] = tentative_distance
+                    total_cost = tentative_distance + self.calH(neighbor, g)
+                    costs[neighbor] = total_cost
+                    open_set.put((total_cost, neighbor))
+
+        return []
 
     def traverse_path(self, s, g, parent_node):
         """
@@ -221,10 +248,20 @@ class Astar:
         Returns:
             list: Path from start to goal.
         """
-        # TODO: Implement logic to backtrack from goal to start using parent_node
-        # YOUR CODE STARTS HERE
-        pass
-        # YOUR CODE ENDS HERE
+        if s == g:
+            return [s]
+
+        if g not in parent_node:
+            return []
+
+        path = [g]
+        current = g
+        while current != s:
+            current = parent_node[current]
+            path.append(current)
+
+        path.reverse()
+        return path
 
     def get_neighbor(self, u, graph_vert_list, adjacency_matrix):
 
@@ -250,10 +287,7 @@ class Astar:
         Returns:
             float: Cost of expansion.
         """
-        # TODO: Return the expansion cost
-        # YOUR CODE STARTS HERE
-        pass
-        # YOUR CODE ENDS HERE
+        return edge_dict.get((v1, v2), np.inf)
 
     def calH(self, v1, v2):
         """
@@ -266,7 +300,4 @@ class Astar:
         Returns:
             float: Heuristic cost.
         """
-        # TODO: Return the heuristic cost
-        # YOUR CODE STARTS HERE
-        pass
-        # YOUR CODE ENDS HERE
+        return np.hypot(v1[0] - v2[0], v1[1] - v2[1])

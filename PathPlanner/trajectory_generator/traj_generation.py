@@ -32,12 +32,36 @@ class TrajGenerator:
         
         # TODO: Calculate gear and station (distance) information
         # YOUR CODE STARTS HERE
-    
+        if not path:
+            return result
+
+        for i in range(1, len(path)):
+            prev = path[i - 1]
+            curr = path[i]
+            segment = self.distance(prev[:2], curr[:2])
+            stations[i] = stations[i - 1] + segment
+
+            heading = math.atan2(curr[1] - prev[1], curr[0] - prev[0]) if segment > 1e-9 else math.radians(prev[2])
+            orientation = math.radians(prev[2])
+            direction = math.cos(heading - orientation)
+            gears[i] = 1 if direction >= 0 else -1
+
+        if len(gears) > 1:
+            gears[0] = gears[1]
+        else:
+            gears[0] = 1
         # YOUR CODE ENDS HERE
 
         # Calculate the time profile for the trajectory
         # YOUR CODE STARTS HERE
-    
+        if stations[-1] <= 1e-9:
+            single_state = State()
+            x, y, theta = path[0]
+            single_state.x = x
+            single_state.y = y
+            single_state.theta = math.radians(theta)
+            result.states.append(single_state)
+            return result
         # YOUR CODE ENDS HERE
 
         time_profile = [0.0] * len(gears)
@@ -51,6 +75,19 @@ class TrajGenerator:
                 time_profile[last_idx:i+1] = profile
                 start_time = profile[-1]
                 last_idx = i + 1
+
+        velocity_profile = [0.0] * len(path)
+        for i in range(1, len(path)):
+            dt_profile = time_profile[i] - time_profile[i - 1]
+            ds_profile = stations[i] - stations[i - 1]
+            if dt_profile > 1e-9:
+                velocity_profile[i] = gears[i] * min(max_velocity, ds_profile / dt_profile)
+            else:
+                velocity_profile[i] = 0.0
+
+        if len(path) > 1:
+            velocity_profile[0] = velocity_profile[1]
+            velocity_profile[-1] = 0.0
         
         # Interpolate the trajectory to ensure uniform time steps
         nfe = max(self.min_nfe, int(time_profile[-1] / self.time_step))
@@ -65,6 +102,7 @@ class TrajGenerator:
         interp_x = self.interpolate_1d(time_profile, prev_x, interpolated_ticks)
         interp_y = self.interpolate_1d(time_profile, prev_y, interpolated_ticks)
         interp_theta = self.to_continuous_angle(self.interpolate_1d(time_profile, prev_theta, interpolated_ticks))
+        interp_v = self.interpolate_1d(time_profile, velocity_profile, interpolated_ticks)
 
         dt = interpolated_ticks[1] - interpolated_ticks[0] # Time step
 
@@ -74,19 +112,29 @@ class TrajGenerator:
             state.x = interp_x[i]
             state.y = interp_y[i]
             state.theta = interp_theta[i]
-            state.v = 0.0
+            state.v = interp_v[i]
             state.a = 0.0
             state.omega = 0.0
             result.states.append(state)
 
         # TODO: Calculate velocities and angular velocities for the trajectory
         # YOUR CODE STARTS HERE
-    
+        for i in range(1, nfe):
+            dtheta = self.normalize_angle(result.states[i].theta - result.states[i - 1].theta)
+            result.states[i].omega = dtheta / dt if dt > 1e-9 else 0.0
+
+        if nfe > 1:
+            result.states[0].v = result.states[1].v
+            result.states[0].omega = result.states[1].omega
         # YOUR CODE ENDS HERE
 
         # TODO: Calculate accelerations and angular accelerations
         # YOUR CODE STARTS HERE
-    
+        for i in range(1, nfe):
+            result.states[i].a = (result.states[i].v - result.states[i - 1].v) / dt if dt > 1e-9 else 0.0
+
+        if nfe > 1:
+            result.states[0].a = result.states[1].a
         # YOUR CODE ENDS HERE
 
         return result
@@ -111,23 +159,64 @@ class TrajGenerator:
         decel_idx = len(stations) - 1
         vi = 0.0 # Initial velocity
         profile = [0.0] * len(stations)
+        total_distance = stations[-1] - stations[0]
+
+        if len(stations) <= 1 or total_distance <= 1e-9:
+            return [start_time] * len(stations)
+
+        accel_distance = max_velocity * max_velocity / (2.0 * max_accel)
+        decel_distance = max_velocity * max_velocity / (2.0 * abs(max_decel))
+
+        if accel_distance + decel_distance <= total_distance:
+            peak_velocity = max_velocity
+            cruise_distance = total_distance - accel_distance - decel_distance
+        else:
+            peak_velocity = math.sqrt(
+                max(
+                    0.0,
+                    2.0 * total_distance / ((1.0 / max_accel) + (1.0 / abs(max_decel)))
+                )
+            )
+            accel_distance = peak_velocity * peak_velocity / (2.0 * max_accel)
+            decel_distance = peak_velocity * peak_velocity / (2.0 * abs(max_decel))
+            cruise_distance = 0.0
 
         # TODO: Implement acceleration phase
         # YOUR CODE STARTS HERE
         for i in range(len(stations) - 1):
-            pass
+            local_s = stations[i + 1] - stations[0]
+            if local_s <= accel_distance + 1e-9:
+                profile[i + 1] = min(peak_velocity, math.sqrt(max(0.0, 2.0 * max_accel * local_s)))
+                accel_idx = i + 1
+                vi = profile[i + 1]
+            else:
+                break
         # YOUR CODE ENDS HERE
 
         # TODO: Implement deceleration phase
         vi = 0.0
         # YOUR CODE STARTS HERE
         for i in range(len(stations) - 1, accel_idx, -1):
-            pass
+            remaining_s = stations[-1] - stations[i - 1]
+            if remaining_s <= decel_distance + 1e-9:
+                decel_speed = min(peak_velocity, math.sqrt(max(0.0, 2.0 * abs(max_decel) * remaining_s)))
+                if profile[i - 1] == 0.0:
+                    profile[i - 1] = decel_speed
+                else:
+                    profile[i - 1] = min(profile[i - 1], decel_speed)
+                vi = profile[i - 1]
+                decel_idx = i - 1
         # YOUR CODE ENDS HERE
 
         # TODO: Fill constant velocity phase
         # YOUR CODE STARTS HERE
-    
+        for i in range(accel_idx + 1, decel_idx):
+            if stations[i] - stations[0] <= accel_distance + cruise_distance:
+                profile[i] = peak_velocity
+
+        if len(profile) > 0:
+            profile[0] = 0.0
+            profile[-1] = 0.0
         # YOUR CODE ENDS HERE
 
         # Time profile calculation
@@ -218,7 +307,7 @@ class TrajGenerator:
         """
         # TODO: Normalize an angle to the range [-pi, pi]
         # YOUR CODE STARTS HERE
-        pass
+        return math.atan2(math.sin(angle), math.cos(angle))
         # YOUR CODE ENDS HERE
 
     def distance(self, p1, p2):
@@ -234,7 +323,7 @@ class TrajGenerator:
         """
         # TODO: Calculate Euclidean distance between two points
         # YOUR CODE STARTS HERE
-        pass
+        return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
         # YOUR CODE ENDS HERE
 
     def to_continuous_angle(self, angles):
@@ -249,7 +338,15 @@ class TrajGenerator:
         """
         # TODO: Convert a list of angles into a continuous angle representation.
         # YOUR CODE STARTS HERE
-        pass
+        if not angles:
+            return []
+
+        continuous_angles = [math.radians(angles[0])]
+        for angle_deg in angles[1:]:
+            angle = math.radians(angle_deg)
+            delta = self.normalize_angle(angle - continuous_angles[-1])
+            continuous_angles.append(continuous_angles[-1] + delta)
+        return continuous_angles
         # YOUR CODE ENDS HERE
 
 

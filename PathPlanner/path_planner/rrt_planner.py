@@ -66,7 +66,14 @@ class RRTPlanner:
             Node: A randomly sampled node.
         """
 
-        pass
+        if np.random.rand() < 0.1:
+            return Node(self.goal.x, self.goal.y)
+
+        while True:
+            x = np.random.uniform(0, self.map_size[0] - 1)
+            y = np.random.uniform(0, self.map_size[1] - 1)
+            if not self.obstacles.map[int(x), int(y)]:
+                return Node(x, y)
 
     def find_nearest_node(self, rand_node):
         """
@@ -79,7 +86,7 @@ class RRTPlanner:
             Node: The nearest node in the tree.
         """
 
-        pass
+        return min(self.tree, key=lambda node: np.hypot(node.x - rand_node.x, node.y - rand_node.y))
 
     def steer(self, nearest_node, rand_node):
         """
@@ -93,7 +100,20 @@ class RRTPlanner:
             Node: A new node in the direction of rand_node.
         """
 
-        pass
+        dx = rand_node.x - nearest_node.x
+        dy = rand_node.y - nearest_node.y
+        distance = np.hypot(dx, dy)
+
+        if distance < 1e-9:
+            return None
+
+        if distance <= self.step_size:
+            return Node(rand_node.x, rand_node.y, nearest_node)
+
+        scale = self.step_size / distance
+        new_x = nearest_node.x + dx * scale
+        new_y = nearest_node.y + dy * scale
+        return Node(new_x, new_y, nearest_node)
 
     def is_colliding(self, new_node, nearest_node):
         """
@@ -107,7 +127,21 @@ class RRTPlanner:
             bool: True if there is a collision, False otherwise.
         """
 
-        pass
+        dx = new_node.x - nearest_node.x
+        dy = new_node.y - nearest_node.y
+        distance = np.hypot(dx, dy)
+        n_steps = max(1, int(np.ceil(distance)))
+
+        for i in range(n_steps + 1):
+            ratio = i / n_steps
+            x = nearest_node.x + dx * ratio
+            y = nearest_node.y + dy * ratio
+            xi = int(np.clip(round(x), 0, self.map_size[0] - 1))
+            yi = int(np.clip(round(y), 0, self.map_size[1] - 1))
+            if self.obstacles.map[xi, yi]:
+                return True
+
+        return False
 
     def reached_goal(self, new_node):
         """
@@ -120,7 +154,7 @@ class RRTPlanner:
             bool: True if goal is reached, False otherwise.
         """
 
-        pass
+        return np.hypot(new_node.x - self.goal.x, new_node.y - self.goal.y) <= self.step_size
 
     def construct_path(self, end_node):
         """
@@ -133,4 +167,15 @@ class RRTPlanner:
             list: A list of (x, y) tuples representing the path from start to goal.
         """
 
-        pass
+        goal_node = Node(self.goal.x, self.goal.y, end_node)
+        if self.is_colliding(goal_node, end_node):
+            goal_node = end_node
+
+        path = []
+        current = goal_node
+        while current is not None:
+            path.append((current.x, current.y))
+            current = current.parent
+
+        path.reverse()
+        return path
