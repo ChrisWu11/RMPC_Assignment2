@@ -17,7 +17,7 @@ class Node:
         self.parent = parent  
 
 class RRTPlanner:
-    def __init__(self, start, goal, map_size, obstacles, max_iter=500, step_size=5):
+    def __init__(self, start, goal, map_size, obstacles, max_iter=500, step_size=5, clearance=2, collision_step=0.5):
         """
         Initializes the RRT planner.
 
@@ -28,6 +28,8 @@ class RRTPlanner:
             obstacles (ObstaclesGrid): Object that stores obstacle information.
             max_iter (int): Maximum number of iterations for RRT.
             step_size (float): Step size for expanding the tree.
+            clearance (int): Safety margin (in grid cells) around obstacles.
+            collision_step (float): Interpolation step for edge collision checks.
         """
         self.start = Node(start[0], start[1])
         self.goal = Node(goal[0], goal[1])
@@ -35,7 +37,9 @@ class RRTPlanner:
         self.obstacles = obstacles
         self.max_iter = max_iter
         self.step_size = step_size
-        self.tree = [self.start] 
+        self.tree = [self.start]
+        self.clearance = clearance
+        self.collision_step = collision_step 
 
     def plan(self):
         """
@@ -127,21 +131,12 @@ class RRTPlanner:
             bool: True if there is a collision, False otherwise.
         """
 
-        dx = new_node.x - nearest_node.x
-        dy = new_node.y - nearest_node.y
-        distance = np.hypot(dx, dy)
-        n_steps = max(1, int(np.ceil(distance)))
-
-        for i in range(n_steps + 1):
-            ratio = i / n_steps
-            x = nearest_node.x + dx * ratio
-            y = nearest_node.y + dy * ratio
-            xi = int(np.clip(round(x), 0, self.map_size[0] - 1))
-            yi = int(np.clip(round(y), 0, self.map_size[1] - 1))
-            if self.obstacles.map[xi, yi]:
-                return True
-
-        return False
+        return self.obstacles.is_segment_collision(
+            (nearest_node.x, nearest_node.y),
+            (new_node.x, new_node.y),
+            step=self.collision_step,
+            clearance=self.clearance,
+        )
 
     def reached_goal(self, new_node):
         """

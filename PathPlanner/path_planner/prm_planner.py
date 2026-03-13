@@ -20,7 +20,7 @@ class Node:
         self.y = y
 
 class PRMPlanner:
-    def __init__(self, start, goal, map_size, obstacles, num_samples=200, k_neighbors=10, step_size=5):
+    def __init__(self, start, goal, map_size, obstacles, num_samples=200, k_neighbors=10, step_size=5, clearance=2, collision_step=0.5):
         """
         Initializes the PRM planner.
 
@@ -31,7 +31,9 @@ class PRMPlanner:
             obstacles (ObstaclesGrid): Object that stores obstacle information.
             num_samples (int): Number of random samples for roadmap construction.
             k_neighbors (int): Number of nearest neighbors to connect in the roadmap.
-            step_size (float): Step size used for collision checking.
+            step_size (float): Step size used for roadmap expansion.
+            clearance (int): Safety margin (in grid cells) around obstacles.
+            collision_step (float): Interpolation step for edge collision checks.
         """
         self.start = Node(start[0], start[1])
         self.goal = Node(goal[0], goal[1])
@@ -41,7 +43,9 @@ class PRMPlanner:
         self.k_neighbors = k_neighbors
         self.step_size = step_size
         self.roadmap = [] 
-        self.edges = {} 
+        self.edges = {}
+        self.clearance = clearance
+        self.collision_step = collision_step 
 
     def construct_roadmap(self):
         """
@@ -130,21 +134,12 @@ class PRMPlanner:
             bool: True if there is a collision, False otherwise.
         """
 
-        dx = node2.x - node1.x
-        dy = node2.y - node1.y
-        distance = np.hypot(dx, dy)
-        n_steps = max(1, int(np.ceil(distance / max(self.step_size, 1e-6))))
-
-        for i in range(n_steps + 1):
-            ratio = i / n_steps
-            x = node1.x + dx * ratio
-            y = node1.y + dy * ratio
-            xi = int(np.clip(round(x), 0, self.map_size[0] - 1))
-            yi = int(np.clip(round(y), 0, self.map_size[1] - 1))
-            if self.obstacles.map[xi, yi]:
-                return True
-
-        return False
+        return self.obstacles.is_segment_collision(
+            (node1.x, node1.y),
+            (node2.x, node2.y),
+            step=self.collision_step,
+            clearance=self.clearance,
+        )
 
     def plan(self):
         """

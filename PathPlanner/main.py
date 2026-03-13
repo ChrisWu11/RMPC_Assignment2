@@ -64,11 +64,11 @@ def main(args=None):
     path = graph.solve(s_3d, g_3d, graph._graph._vert_list, graph._graph._adjacency_matrix, graph._graph._edge_dict)
 
     # Find a path from start to goal using rrt planner
-    rrt = RRTPlanner(s_2d, g_2d, map_size, obs)
+    rrt = RRTPlanner(s_2d, g_2d, map_size, obs, clearance=2, collision_step=0.25)
     path_rrt = rrt.plan()
 
     # Find a path from start to goal using prm planner
-    prm = PRMPlanner(s_2d, g_2d, map_size, obs)
+    prm = PRMPlanner(s_2d, g_2d, map_size, obs, clearance=2, collision_step=0.25)
     prm.construct_roadmap()
     path_prm = prm.plan()
 
