@@ -8,7 +8,7 @@ from path_planner.utils import ObstaclesGrid
 from path_planner.utils import *
 from trajectory_generator.traj_generation import TrajGenerator
 import matplotlib.pyplot as plt
-from path_planner.utils import *
+import numpy as np
 
 
 def scale_points(path_points, scaler):
@@ -20,8 +20,33 @@ def scale_points(path_points, scaler):
     return rows, cols
 
 
+def path_length(path_points):
+    if not path_points or len(path_points) < 2:
+        return 0.0
+
+    length = 0.0
+    for i in range(1, len(path_points)):
+        dr = path_points[i][0] - path_points[i - 1][0]
+        dc = path_points[i][1] - path_points[i - 1][1]
+        length += np.hypot(dr, dc)
+    return length
+
+
+def is_path_collision_free(path_points, obs_grid, step=0.25, clearance=2):
+    if not path_points:
+        return False
+
+    for i in range(1, len(path_points)):
+        if obs_grid.is_segment_collision(path_points[i - 1], path_points[i], step=step, clearance=clearance):
+            return False
+
+    return True
+
+
 def main(args=None):
     # Initialize the graph and trajectory generator
+    np.random.seed(42)
+
     graph = LatticeGraph()
     traj_generator = TrajGenerator()
 
@@ -64,14 +89,15 @@ def main(args=None):
     path = graph.solve(s_3d, g_3d, graph._graph._vert_list, graph._graph._adjacency_matrix, graph._graph._edge_dict)
 
     # Find a path from start to goal using rrt planner
-    rrt = RRTPlanner(s_2d, g_2d, map_size, obs, clearance=2, collision_step=0.25)
+    rrt = RRTPlanner(s_2d, g_2d, map_size, obs, max_iter=1200, step_size=4, clearance=2, collision_step=0.25, shortcut_iter=200)
     path_rrt = rrt.plan()
 
     # Find a path from start to goal using prm planner
-    prm = PRMPlanner(s_2d, g_2d, map_size, obs, clearance=2, collision_step=0.25)
+    prm = PRMPlanner(s_2d, g_2d, map_size, obs, num_samples=500, k_neighbors=16, clearance=2, collision_step=0.25, shortcut_iter=200)
     prm.construct_roadmap()
     path_prm = prm.plan()
 
+    lattice_path = None
     if path:
         # Interpolate the path for smoothness
         path_interpolated = traj_generator.path_interpolation(path, graph, lattice_cell_size, 10)
@@ -86,6 +112,7 @@ def main(args=None):
         traj_y = [state.y for state in result.states]
         traj_v = [state.v for state in result.states]
         traj_t = [i * traj_generator.time_step for i in range(len(result.states))]
+        lattice_path = [(state.x, state.y) for state in result.states]
 
         plt.figure("Velocity-Time")
         plt.plot(traj_t, traj_v, color='tab:blue', linewidth=2.0, label='Lattice velocity')
@@ -94,6 +121,14 @@ def main(args=None):
         plt.title("Velocity-Time Curve")
         plt.grid(True)
         plt.legend()
+
+    print("\nPath diagnostics (shorter is better):")
+    if lattice_path:
+        print(f"- Lattice length: {path_length(lattice_path):.2f}, collision_free={is_path_collision_free(lattice_path, obs, clearance=0)}")
+    if path_rrt:
+        print(f"- RRT length: {path_length(path_rrt):.2f}, collision_free={is_path_collision_free(path_rrt, obs, clearance=2)}")
+    if path_prm:
+        print(f"- PRM length: {path_length(path_prm):.2f}, collision_free={is_path_collision_free(path_prm, obs, clearance=2)}")
 
     # Plot the obstacle map and trajectory
     ax = plot_map(obs_plot, graph, lattice_cell_size)

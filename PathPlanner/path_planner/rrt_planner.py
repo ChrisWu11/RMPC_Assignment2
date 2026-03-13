@@ -17,7 +17,7 @@ class Node:
         self.parent = parent  
 
 class RRTPlanner:
-    def __init__(self, start, goal, map_size, obstacles, max_iter=500, step_size=5, clearance=2, collision_step=0.5):
+    def __init__(self, start, goal, map_size, obstacles, max_iter=500, step_size=5, clearance=2, collision_step=0.5, shortcut_iter=120):
         """
         Initializes the RRT planner.
 
@@ -30,6 +30,7 @@ class RRTPlanner:
             step_size (float): Step size for expanding the tree.
             clearance (int): Safety margin (in grid cells) around obstacles.
             collision_step (float): Interpolation step for edge collision checks.
+            shortcut_iter (int): Number of random shortcut attempts for path optimization.
         """
         self.start = Node(start[0], start[1])
         self.goal = Node(goal[0], goal[1])
@@ -40,6 +41,7 @@ class RRTPlanner:
         self.tree = [self.start]
         self.clearance = clearance
         self.collision_step = collision_step 
+        self.shortcut_iter = shortcut_iter
 
     def plan(self):
         """
@@ -57,7 +59,8 @@ class RRTPlanner:
                 self.tree.append(new_node)
 
                 if self.reached_goal(new_node):  
-                    return self.construct_path(new_node) 
+                    raw_path = self.construct_path(new_node)
+                    return self.shortcut_path(raw_path)
         
         print("Path not found.")
         return None
@@ -174,3 +177,37 @@ class RRTPlanner:
 
         path.reverse()
         return path
+
+    def shortcut_path(self, path):
+        """
+        Shortens a collision-free path by replacing subsegments with direct, obstacle-free connections.
+
+        Args:
+            path (list): A list of (x, y) tuples.
+
+        Returns:
+            list: Optimized collision-free path.
+        """
+
+        if not path or len(path) <= 2:
+            return path
+
+        optimized = list(path)
+        for _ in range(self.shortcut_iter):
+            if len(optimized) <= 2:
+                break
+
+            i = np.random.randint(0, len(optimized) - 2)
+            j = np.random.randint(i + 2, len(optimized))
+
+            if self.obstacles.is_segment_collision(
+                optimized[i],
+                optimized[j],
+                step=self.collision_step,
+                clearance=self.clearance,
+            ):
+                continue
+
+            optimized = optimized[: i + 1] + optimized[j:]
+
+        return optimized
