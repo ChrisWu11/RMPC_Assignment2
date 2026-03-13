@@ -88,6 +88,50 @@ class ObstaclesGrid:
 
         return not self.map[point[0], point[1]]
 
+    def is_point_collision(self, row, col, clearance=0):
+
+        row_i = int(round(row))
+        col_i = int(round(col))
+
+        if clearance <= 0:
+            if row_i < 0 or row_i >= self.map_size[0] or col_i < 0 or col_i >= self.map_size[1]:
+                return True
+            return self.map[row_i, col_i]
+
+        for d_row in range(-clearance, clearance + 1):
+            for d_col in range(-clearance, clearance + 1):
+                if d_row * d_row + d_col * d_col > clearance * clearance:
+                    continue
+
+                check_row = row_i + d_row
+                check_col = col_i + d_col
+                if check_row < 0 or check_row >= self.map_size[0] or check_col < 0 or check_col >= self.map_size[1]:
+                    return True
+                if self.map[check_row, check_col]:
+                    return True
+
+        return False
+
+    def is_segment_collision(self, start, end, step=0.5, clearance=0):
+
+        d_row = end[0] - start[0]
+        d_col = end[1] - start[1]
+        distance = np.hypot(d_row, d_col)
+        if distance < 1e-9:
+            return self.is_point_collision(start[0], start[1], clearance)
+
+        step = max(step, 1e-3)
+        n_steps = int(np.ceil(distance / step))
+
+        for i in range(n_steps + 1):
+            ratio = i / n_steps
+            row = start[0] + d_row * ratio
+            col = start[1] + d_col * ratio
+            if self.is_point_collision(row, col, clearance):
+                return True
+
+        return False
+
 def write_result_to_yaml(result, filename):
     base_dir = os.path.abspath(os.path.join(
         os.path.dirname(__file__), '..', '..', '..', 'install', 'turtlebot3_navigation2', 'share', 'turtlebot3_navigation2', 'launch'))
