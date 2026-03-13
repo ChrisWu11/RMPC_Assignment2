@@ -20,7 +20,7 @@ class Node:
         self.y = y
 
 class PRMPlanner:
-    def __init__(self, start, goal, map_size, obstacles, num_samples=200, k_neighbors=10, step_size=5, clearance=2, collision_step=0.5):
+    def __init__(self, start, goal, map_size, obstacles, num_samples=200, k_neighbors=10, step_size=5, clearance=2, collision_step=0.5, shortcut_iter=120):
         """
         Initializes the PRM planner.
 
@@ -34,6 +34,7 @@ class PRMPlanner:
             step_size (float): Step size used for roadmap expansion.
             clearance (int): Safety margin (in grid cells) around obstacles.
             collision_step (float): Interpolation step for edge collision checks.
+            shortcut_iter (int): Number of random shortcut attempts for path optimization.
         """
         self.start = Node(start[0], start[1])
         self.goal = Node(goal[0], goal[1])
@@ -46,6 +47,7 @@ class PRMPlanner:
         self.edges = {}
         self.clearance = clearance
         self.collision_step = collision_step 
+        self.shortcut_iter = shortcut_iter
 
     def construct_roadmap(self):
         """
@@ -171,7 +173,7 @@ class PRMPlanner:
                     path.append((current.x, current.y))
                     current = parent[current]
                 path.reverse()
-                return path
+                return self.shortcut_path(path)
 
             for neighbor in self.edges.get(current, []):
                 if neighbor in visited:
@@ -186,3 +188,37 @@ class PRMPlanner:
 
         print("Path not found.")
         return None
+
+    def shortcut_path(self, path):
+        """
+        Shortens a collision-free path by replacing subsegments with direct, obstacle-free connections.
+
+        Args:
+            path (list): A list of (x, y) tuples.
+
+        Returns:
+            list: Optimized collision-free path.
+        """
+
+        if not path or len(path) <= 2:
+            return path
+
+        optimized = list(path)
+        for _ in range(self.shortcut_iter):
+            if len(optimized) <= 2:
+                break
+
+            i = np.random.randint(0, len(optimized) - 2)
+            j = np.random.randint(i + 2, len(optimized))
+
+            if self.obstacles.is_segment_collision(
+                optimized[i],
+                optimized[j],
+                step=self.collision_step,
+                clearance=self.clearance,
+            ):
+                continue
+
+            optimized = optimized[: i + 1] + optimized[j:]
+
+        return optimized
